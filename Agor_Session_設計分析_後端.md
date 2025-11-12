@@ -10,6 +10,7 @@
 
 1. [Agentic 呼叫架構與流程](#1-agentic-呼叫架構與流程)
 2. [Session API 設計](#2-session-api-設計)
+   - 2.4 [完整 API 回應格式](#24-完整-api-回應格式)
 3. [訊息中斷與接續機制](#3-訊息中斷與接續機制)
 4. [權限系統設計](#4-權限系統設計)
 5. [三種 Agent 的差異比較](#5-三種-agent-的差異比較)
@@ -368,6 +369,787 @@ custom_context: Record<string, unknown>
 - ✅ 索引欄位的快速查詢
 - ✅ Schema 變更無需 migration (JSON 欄位)
 - ✅ 跨資料庫相容性 (LibSQL → PostgreSQL)
+
+### 2.4 完整 API 回應格式
+
+#### Session API 回應範例
+
+##### GET /sessions/:id - 取得單一 Session
+
+```json
+{
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "agentic_tool": "claude-code",
+  "agentic_tool_version": "0.8.0",
+  "sdk_session_id": "sess_abc123",
+  "mcp_token": "mcp_token_xyz789",
+  "status": "idle",
+  "created_at": "2025-11-12T10:30:00.000Z",
+  "last_updated": "2025-11-12T11:45:00.000Z",
+  "created_by": "user_01933e4a",
+  "worktree_id": "wt_01933e5b",
+  "git_state": {
+    "ref": "feat-auth",
+    "base_sha": "abc123def456",
+    "current_sha": "def456ghi789"
+  },
+  "contextFiles": ["ARCHITECTURE.md", "API.md"],
+  "genealogy": {
+    "forked_from_session_id": null,
+    "fork_point_task_id": null,
+    "fork_point_message_index": null,
+    "parent_session_id": null,
+    "spawn_point_task_id": null,
+    "spawn_point_message_index": null,
+    "children": []
+  },
+  "tasks": ["task_01933e6c", "task_01933e7d"],
+  "message_count": 15,
+  "title": "Implement OAuth authentication",
+  "description": "Add OAuth 2.0 support with GitHub provider",
+  "permission_config": {
+    "mode": "acceptEdits",
+    "codex": {
+      "sandboxMode": "workspace-write",
+      "approvalPolicy": "auto",
+      "networkAccess": true
+    }
+  },
+  "model_config": {
+    "mode": "alias",
+    "model": "claude-sonnet-4-5-latest",
+    "updated_at": "2025-11-12T10:30:00.000Z",
+    "notes": "Using latest Sonnet for complex refactoring",
+    "thinkingMode": "auto",
+    "manualThinkingTokens": null,
+    "provider": null
+  },
+  "custom_context": {
+    "teamName": "Backend",
+    "sprintNumber": 42
+  },
+  "current_context_usage": 45000,
+  "context_window_limit": 200000,
+  "last_context_update_at": "2025-11-12T11:45:00.000Z",
+  "scheduled_run_at": null,
+  "scheduled_from_worktree": false,
+  "ready_for_prompt": true,
+  "archived": false,
+  "archived_reason": null
+}
+```
+
+##### POST /sessions - 建立新 Session
+
+**請求：**
+
+```json
+{
+  "agentic_tool": "claude-code",
+  "worktree_id": "wt_01933e5b",
+  "title": "Add user authentication",
+  "description": "Implement login and signup flows",
+  "permission_config": {
+    "mode": "acceptEdits"
+  },
+  "model_config": {
+    "mode": "alias",
+    "model": "claude-sonnet-4-5-latest",
+    "thinkingMode": "auto"
+  },
+  "contextFiles": ["AUTH.md"]
+}
+```
+
+**回應：** 與 GET 回應格式相同
+
+##### POST /sessions/:id/fork - Fork Session
+
+**請求：**
+
+```json
+{
+  "prompt": "Try a different approach with Redis",
+  "task_id": "task_01933e6c"
+}
+```
+
+**回應：**
+
+```json
+{
+  "session_id": "03b62448-new-fork-id",
+  "agentic_tool": "claude-code",
+  "status": "idle",
+  "created_at": "2025-11-12T12:00:00.000Z",
+  "worktree_id": "wt_01933e5b",
+  "genealogy": {
+    "forked_from_session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+    "fork_point_task_id": "task_01933e6c",
+    "fork_point_message_index": 15,
+    "parent_session_id": null,
+    "children": []
+  },
+  "title": "Try a different approach with Redis",
+  "tasks": [],
+  "message_count": 0
+  // ... 其他 session 欄位
+}
+```
+
+##### POST /sessions/:id/spawn - Spawn 子 Session
+
+**請求：**
+
+```json
+{
+  "prompt": "Create a test suite for the auth module",
+  "title": "Auth testing",
+  "agentic_tool": "codex",
+  "task_id": "task_01933e7d"
+}
+```
+
+**回應：**
+
+```json
+{
+  "session_id": "03b62449-spawned-child",
+  "agentic_tool": "codex",
+  "status": "idle",
+  "created_at": "2025-11-12T12:15:00.000Z",
+  "worktree_id": "wt_01933e5b",
+  "genealogy": {
+    "forked_from_session_id": null,
+    "parent_session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+    "spawn_point_task_id": "task_01933e7d",
+    "spawn_point_message_index": 15,
+    "children": []
+  },
+  "title": "Auth testing",
+  "tasks": [],
+  "message_count": 0
+  // ... 其他 session 欄位
+}
+```
+
+##### GET /sessions/:id/genealogy - 取得 Session 家譜
+
+**回應：**
+
+```json
+{
+  "session": {
+    // 完整 session 物件
+  },
+  "ancestors": [
+    {
+      "session_id": "parent_session_id"
+      // 完整父 session 物件
+    }
+  ],
+  "children": [
+    {
+      "session_id": "child_session_id"
+      // 完整子 session 物件
+    }
+  ]
+}
+```
+
+##### GET /sessions - 列表（分頁）
+
+**回應：**
+
+```json
+{
+  "total": 150,
+  "limit": 50,
+  "skip": 0,
+  "data": [
+    {
+      "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+      // 完整 session 物件
+    }
+    // ... 更多 sessions
+  ]
+}
+```
+
+#### Task API 回應範例
+
+##### GET /tasks/:id - 取得單一 Task
+
+```json
+{
+  "task_id": "task_01933e6c",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "created_by": "user_01933e4a",
+  "full_prompt": "Add OAuth authentication with GitHub provider. Include error handling and tests.",
+  "description": "Implement OAuth 2.0 authentication",
+  "status": "completed",
+  "message_range": {
+    "start_index": 5,
+    "end_index": 12,
+    "start_timestamp": "2025-11-12T10:30:00.000Z",
+    "end_timestamp": "2025-11-12T11:45:00.000Z"
+  },
+  "tool_use_count": 23,
+  "git_state": {
+    "ref_at_start": "feat-auth",
+    "sha_at_start": "abc123def456",
+    "sha_at_end": "def456ghi789",
+    "commit_message": "feat: add OAuth GitHub authentication"
+  },
+  "usage": {
+    "input_tokens": 12500,
+    "output_tokens": 3200,
+    "total_tokens": 15700,
+    "cache_read_tokens": 8000,
+    "cache_creation_tokens": 2000,
+    "estimated_cost_usd": 0.45
+  },
+  "duration_ms": 75000,
+  "agent_session_id": "sess_abc123",
+  "context_window": 45000,
+  "context_window_limit": 200000,
+  "model": "claude-sonnet-4-5-20250929",
+  "model_usage": {
+    "claude-sonnet-4-5-20250929": {
+      "inputTokens": 12500,
+      "outputTokens": 3200,
+      "cacheReadInputTokens": 8000,
+      "cacheCreationInputTokens": 2000,
+      "contextWindow": 200000
+    }
+  },
+  "report": {
+    "path": "03b62447-f2c6-4259-997b-d38ed1ddafed/task_01933e6c.md",
+    "template": "default",
+    "generated_at": "2025-11-12T11:45:00.000Z"
+  },
+  "permission_request": null,
+  "created_at": "2025-11-12T10:30:00.000Z",
+  "started_at": "2025-11-12T10:30:05.000Z",
+  "completed_at": "2025-11-12T11:45:00.000Z"
+}
+```
+
+##### Task 等待權限狀態
+
+```json
+{
+  "task_id": "task_01933e6d",
+  "status": "awaiting_permission",
+  "permission_request": {
+    "request_id": "req_abc123",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "rm -rf node_modules"
+    },
+    "tool_use_id": "toolu_xyz789",
+    "requested_at": "2025-11-12T12:00:00.000Z",
+    "approved_by": null,
+    "approved_at": null
+  }
+  // ... 其他 task 欄位
+}
+```
+
+#### Message API 回應範例
+
+##### GET /messages/:id - 取得單一訊息
+
+```json
+{
+  "message_id": "msg_01933e8e",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "task_id": "task_01933e6c",
+  "type": "assistant",
+  "role": "assistant",
+  "index": 7,
+  "timestamp": "2025-11-12T11:00:00.000Z",
+  "content_preview": "I'll help you implement OAuth authentication. Let me start by creating the...",
+  "content": [
+    {
+      "type": "text",
+      "text": "I'll help you implement OAuth authentication. Let me start by creating the authentication controller."
+    },
+    {
+      "type": "tool_use",
+      "id": "toolu_abc123",
+      "name": "Write",
+      "input": {
+        "file_path": "/home/user/project/auth/oauth.ts",
+        "content": "export class OAuthController { ... }"
+      }
+    }
+  ],
+  "tool_uses": [
+    {
+      "id": "toolu_abc123",
+      "name": "Write",
+      "input": {
+        "file_path": "/home/user/project/auth/oauth.ts",
+        "content": "export class OAuthController { ... }"
+      }
+    }
+  ],
+  "parent_tool_use_id": null,
+  "status": null,
+  "queue_position": null,
+  "metadata": {
+    "model": "claude-sonnet-4-5-20250929",
+    "tokens": {
+      "input": 1500,
+      "output": 350
+    },
+    "original_id": "msg_claude_xyz",
+    "is_meta": false
+  }
+}
+```
+
+##### 含思考區塊的訊息
+
+```json
+{
+  "message_id": "msg_01933e8f",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "type": "assistant",
+  "role": "assistant",
+  "content": [
+    {
+      "type": "thinking",
+      "thinking": "Let me analyze the requirements... The OAuth flow needs to handle state parameters for CSRF protection..."
+    },
+    {
+      "type": "text",
+      "text": "Based on the security requirements, I'll implement OAuth with state parameter validation..."
+    }
+  ]
+  // ... 其他訊息欄位
+}
+```
+
+##### 權限請求訊息
+
+```json
+{
+  "message_id": "msg_01933e90",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "task_id": "task_01933e6c",
+  "type": "permission_request",
+  "role": "assistant",
+  "content": {
+    "request_id": "req_abc123",
+    "tool_name": "Bash",
+    "tool_input": {
+      "command": "npm install passport-github"
+    },
+    "tool_use_id": "toolu_xyz789",
+    "status": "pending",
+    "scope": null,
+    "approved_by": null,
+    "approved_at": null
+  }
+  // ... 其他訊息欄位
+}
+```
+
+##### GET /messages - 列表（分頁）
+
+**查詢參數：**
+
+- `session_id`: 按 session 篩選
+- `task_id`: 按 task 篩選
+- `type`: 按訊息類型篩選
+- `role`: 按角色篩選
+- `$limit`: 每頁數量（預設: 100，最大: 1000）
+- `$skip`: 跳過數量（分頁用）
+- `$sort`: 排序（例如: `{"index": 1}`）
+
+**回應：**
+
+```json
+{
+  "total": 250,
+  "limit": 100,
+  "skip": 0,
+  "data": [
+    {
+      "message_id": "msg_01933e8e"
+      // 完整訊息物件
+    }
+    // ... 更多訊息
+  ]
+}
+```
+
+#### WebSocket 事件格式
+
+##### 標準服務事件
+
+所有服務自動發送以下標準事件：
+
+**created 事件：**
+
+```json
+{
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+  // 完整實體物件
+}
+```
+
+**patched / updated 事件：**
+
+```json
+{
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+  // 完整更新後的實體物件
+}
+```
+
+**removed 事件：**
+
+```json
+{
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+  // 完整被刪除的實體物件（刪除前狀態）
+}
+```
+
+##### 串流事件
+
+**streaming:start**
+
+```json
+{
+  "message_id": "msg_01933e8e",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "task_id": "task_01933e6c",
+  "role": "assistant",
+  "timestamp": "2025-11-12T11:00:00.000Z"
+}
+```
+
+**streaming:chunk**
+
+```json
+{
+  "message_id": "msg_01933e8e",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "chunk": "I'll help you implement "
+}
+```
+
+**streaming:end**
+
+```json
+{
+  "message_id": "msg_01933e8e",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+}
+```
+
+**streaming:error**
+
+```json
+{
+  "message_id": "msg_01933e8e",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "error": "API rate limit exceeded"
+}
+```
+
+##### 思考區塊事件
+
+**thinking:start**
+
+```json
+{
+  "message_id": "msg_01933e8f",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "task_id": "task_01933e6c",
+  "timestamp": "2025-11-12T11:00:00.000Z"
+}
+```
+
+**thinking:chunk**
+
+```json
+{
+  "message_id": "msg_01933e8f",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "chunk": "Let me analyze the requirements... "
+}
+```
+
+**thinking:end**
+
+```json
+{
+  "message_id": "msg_01933e8f",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+}
+```
+
+##### 工具執行事件
+
+**tool:start**
+
+```json
+{
+  "task_id": "task_01933e6c",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "tool_use_id": "toolu_abc123",
+  "tool_name": "Write"
+}
+```
+
+**tool:complete**
+
+```json
+{
+  "task_id": "task_01933e6c",
+  "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed",
+  "tool_use_id": "toolu_abc123"
+}
+```
+
+#### 錯誤回應格式
+
+##### 標準 FeathersJS 錯誤
+
+```json
+{
+  "name": "NotFound",
+  "message": "Session not found: 03b62447-invalid-id",
+  "code": 404,
+  "className": "not-found",
+  "data": {},
+  "errors": {}
+}
+```
+
+##### Agor 自定義錯誤
+
+**NotFoundError (404)**
+
+```json
+{
+  "name": "NotFoundError",
+  "message": "Session not found: 03b62447-invalid-id",
+  "code": "NOT_FOUND",
+  "resourceType": "Session",
+  "id": "03b62447-invalid-id"
+}
+```
+
+**ValidationError (400)**
+
+```json
+{
+  "name": "ValidationError",
+  "message": "Invalid session status: invalid_status",
+  "code": "VALIDATION_ERROR",
+  "field": "status"
+}
+```
+
+**AlreadyExistsError (409)**
+
+```json
+{
+  "name": "AlreadyExistsError",
+  "message": "Worktree already exists: feat-auth",
+  "code": "ALREADY_EXISTS"
+}
+```
+
+**UnauthorizedError (401)**
+
+```json
+{
+  "name": "UnauthorizedError",
+  "message": "Not authorized",
+  "code": "UNAUTHORIZED"
+}
+```
+
+#### 分頁格式
+
+所有列表端點支援以下查詢參數：
+
+- `$limit`: 每頁項目數（預設依服務而異: 50-100）
+- `$skip`: 跳過項目數（用於分頁）
+- `$sort`: 排序順序（例如: `{"created_at": -1}` 表示降序）
+- `$select`: 要包含的欄位（例如: `["session_id", "title", "status"]`）
+
+**分頁回應：**
+
+```json
+{
+  "total": 250,
+  "limit": 50,
+  "skip": 0,
+  "data": [
+    // 實體陣列
+  ]
+}
+```
+
+**非分頁回應（陣列）：**
+
+```json
+[
+  {
+    "session_id": "03b62447-f2c6-4259-997b-d38ed1ddafed"
+    // 完整實體
+  }
+  // ... 更多實體
+]
+```
+
+#### 其他實體回應
+
+##### Worktree 回應
+
+```json
+{
+  "worktree_id": "wt_01933e5b",
+  "repo_id": "repo_01933e4a",
+  "worktree_unique_id": 1,
+  "name": "feat-auth",
+  "ref": "feat-auth",
+  "path": "/home/user/.agor/worktrees/myapp/feat-auth",
+  "base_ref": "main",
+  "base_sha": "abc123def456",
+  "last_commit_sha": "def456ghi789",
+  "tracking_branch": "origin/feat-auth",
+  "new_branch": true,
+  "board_id": "board_01933e5a",
+  "issue_url": "https://github.com/org/repo/issues/123",
+  "pull_request_url": "https://github.com/org/repo/pull/42",
+  "notes": "Implementing OAuth with GitHub provider",
+  "environment_instance": {
+    "status": "running",
+    "process": {
+      "pid": 12345,
+      "started_at": "2025-11-12T10:00:00.000Z",
+      "uptime": "2h 15m"
+    },
+    "last_health_check": {
+      "timestamp": "2025-11-12T12:15:00.000Z",
+      "status": "healthy"
+    },
+    "access_urls": [
+      {
+        "name": "UI",
+        "url": "http://localhost:9001"
+      }
+    ]
+  },
+  "start_command": "pnpm dev",
+  "stop_command": "pkill -f 'pnpm dev'",
+  "health_check_url": "http://localhost:9001/health",
+  "app_url": "http://localhost:9001",
+  "logs_command": "tail -n 100 logs/dev.log",
+  "last_used": "2025-11-12T11:45:00.000Z",
+  "custom_context": {
+    "feature": "authentication"
+  },
+  "needs_attention": true,
+  "schedule_enabled": false,
+  "archived": false,
+  "created_at": "2025-11-10T09:00:00.000Z",
+  "updated_at": "2025-11-12T11:45:00.000Z",
+  "created_by": "user_01933e4a"
+}
+```
+
+##### User 回應
+
+```json
+{
+  "user_id": "user_01933e4a",
+  "email": "developer@example.com",
+  "name": "Max Developer",
+  "emoji": "👨‍💻",
+  "role": "member",
+  "avatar": "https://avatars.example.com/user.jpg",
+  "preferences": {
+    "audio": {
+      "enabled": true,
+      "chime": "gentle-chime",
+      "volume": 0.7,
+      "minDurationSeconds": 30
+    }
+  },
+  "onboarding_completed": true,
+  "created_at": "2025-01-15T10:00:00.000Z",
+  "updated_at": "2025-11-12T11:45:00.000Z",
+  "api_keys": {
+    "ANTHROPIC_API_KEY": true,
+    "OPENAI_API_KEY": false,
+    "GEMINI_API_KEY": true
+  },
+  "env_vars": {
+    "GITHUB_TOKEN": true,
+    "NPM_TOKEN": false
+  },
+  "default_agentic_config": {
+    "claude-code": {
+      "modelConfig": {
+        "mode": "alias",
+        "model": "claude-sonnet-4-5-latest",
+        "thinkingMode": "auto"
+      },
+      "permissionMode": "acceptEdits",
+      "mcpServerIds": ["agor"]
+    }
+  }
+}
+```
+
+#### 回應格式重點總結
+
+**ID 格式：**
+
+- 所有 ID 使用 UUIDv7 格式
+- 例如: `03b62447-f2c6-4259-997b-d38ed1ddafed`
+
+**時間戳記：**
+
+- 所有時間戳記使用 ISO 8601 格式
+- 例如: `2025-11-12T11:45:00.000Z`
+
+**分頁結構：**
+
+- 使用 `total`, `limit`, `skip`, `data` 結構
+- 所有列表端點一致
+
+**內容格式：**
+
+- `content` 可以是字串或 ContentBlock[] 陣列（豐富訊息）
+- ContentBlock 類型: `text`, `tool_use`, `tool_result`, `thinking`
+
+**Git 狀態追蹤：**
+
+- Session 層級和 Task 層級都追蹤 git 狀態
+- 包含 ref, base_sha, current_sha
+
+**Token 使用與成本追蹤：**
+
+- Task 包含詳細的 token 使用統計
+- 估算成本 (USD)
+- 區分 input/output/cache tokens
+
+**即時事件：**
+
+- 所有 CRUD 操作透過 Socket.IO 廣播
+- 串流事件包含 session_id 以便篩選
+- 支援多使用者即時協作
 
 ---
 
@@ -1029,6 +1811,9 @@ context/concepts/
 
 ---
 
-**文件版本**: 1.0
+**文件版本**: 2.0
 **最後更新**: 2025-11-12
 **分析來源**: Agor 專案 (TypeScript/Node.js)
+**更新日誌**:
+- v2.0: 新增完整 API 回應格式（第 2.4 節）
+- v1.0: 初始版本
